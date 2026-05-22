@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+rules.yaml
+data/app.db
+data/app.db-wal
+data/app.db-shm
+data/tenants/
+data/storageState.json
+data/forwarded.json
+data/forwarded-posts.csv
+data/my-repost-links.csv
+data/accounts/
+data/errors/
+.DS_Store

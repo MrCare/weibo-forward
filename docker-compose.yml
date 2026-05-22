@@ -1,0 +1,25 @@
+services:
+  weibo-forward:
+    build: .
+    container_name: weibo-auto-forward
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_PATH: /app/data/app.db
+      PORT: "3000"
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      ALLOW_REGISTER: ${ALLOW_REGISTER:-true}
+      HEADLESS: ${HEADLESS:-true}
+      SKIP_WEIBO_HOME_VERIFY: ${SKIP_WEIBO_HOME_VERIFY:-1}
+      COMMENT_GENERATOR: ${COMMENT_GENERATOR:-api}
+      QWEN_API_KEY: ${QWEN_API_KEY}
+      QWEN_API_BASE: ${QWEN_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
+      CRON_ENABLED: ${CRON_ENABLED:-true}
+      CRON_TZ: ${CRON_TZ:-Asia/Shanghai}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+    shm_size: "2gb"
+    restart: unless-stopped

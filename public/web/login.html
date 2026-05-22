@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>微博扫码登录</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 420px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      color: #222;
+    }
+    h1 { font-size: 1.25rem; }
+    #qr {
+      width: 100%;
+      min-height: 260px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    #qr img {
+      max-width: 240px;
+      max-height: 240px;
+      border-radius: 4px;
+    }
+    #status { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: #f0f4ff; }
+    .ok { background: #e8f5e9 !important; color: #1b5e20; }
+    .err { background: #ffebee !important; color: #b71c1c; }
+    .warn { background: #fff8e1 !important; color: #e65100; }
+    p.hint { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>微博扫码登录</h1>
+  <p class="hint">请使用微博 App 扫描下方二维码。若长时间无码，请关闭本页后在控制台重新发起扫码。</p>
+  <div id="qr"><span>正在连接服务器…</span></div>
+  <div id="status">等待中…</div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const sessionId = params.get("sessionId");
+    const token = params.get("token");
+    const statusEl = document.getElementById("status");
+    const qrEl = document.getElementById("qr");
+
+    if (!sessionId || !token) {
+      statusEl.textContent = "链接无效：缺少 sessionId 或 token";
+      statusEl.className = "err";
+    } else {
+      const apiBase = location.origin;
+      const pollUrl = `${apiBase}/api/v1/public/login-sessions/${sessionId}?token=${encodeURIComponent(token)}`;
+
+      function setStatus(text, cls) {
+        statusEl.textContent = text;
+        statusEl.className = cls || "";
+      }
+
+      function loadQr() {
+        const qrUrl = `${apiBase}/api/v1/public/login-sessions/${sessionId}/qr?token=${encodeURIComponent(token)}&t=${Date.now()}`;
+        const img = document.createElement("img");
+        img.alt = "微博登录二维码";
+        img.onload = () => {
+          qrEl.innerHTML = "";
+          qrEl.appendChild(img);
+        };
+        img.onerror = () => {
+          qrEl.innerHTML = "<span style='color:#999;font-size:0.9rem'>二维码尚未就绪，2 秒后重试…</span>";
+        };
+        img.src = qrUrl;
+      }
+
+      async function poll() {
+        try {
+          const res = await fetch(pollUrl);
+          const data = await res.json();
+
+          if (data.status === "succeeded") {
+            setStatus("登录成功！可关闭此页面，回到管理端继续操作。", "ok");
+            qrEl.innerHTML = "<span style='color:#1b5e20'>✓</span>";
+            return;
+          }
+          if (data.status === "failed" || data.status === "expired") {
+            setStatus(data.errorMessage || "登录失败或已过期，请回到控制台重新发起扫码。", "err");
+            return;
+          }
+          if (data.status === "awaiting_scan") {
+            if (data.errorMessage && data.errorMessage.includes("同步")) {
+              setStatus(data.errorMessage, "warn");
+              qrEl.innerHTML = "<span style='color:#666'>正在同步登录态，请稍候…</span>";
+            } else {
+              setStatus("请使用微博 App 扫描二维码…");
+              loadQr();
+            }
+          } else if (data.status === "pending") {
+            setStatus(data.errorMessage || "正在打开微博登录页并生成二维码…", "warn");
+            loadQr();
+          } else {
+            setStatus("正在准备…");
+          }
+          setTimeout(poll, 2000);
+        } catch (e) {
+          setStatus("无法连接 API: " + e.message, "err");
+          setTimeout(poll, 3000);
+        }
+      }
+
+      poll();
+    }
+  </script>
+</body>
+</html>

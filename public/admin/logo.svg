@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Weibo Forward">
+  <defs>
+    <linearGradient id="wf" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5ac8fa"/>
+      <stop offset="1" stop-color="#0071e3"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="28" fill="url(#wf)"/>
+  <path fill="#fff" d="M26 20v24l18-12L26 20z"/>
+</svg>

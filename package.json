@@ -1,0 +1,33 @@
+{
+  "name": "weibo-auto-forward",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "auth:login": "tsx src/cli.ts auth login",
+    "forward": "tsx src/cli.ts forward",
+    "start:api": "tsx src/api-main.ts",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "commander": "^13.1.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "playwright": "^1.52.0",
+    "yaml": "^2.9.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.15.21",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

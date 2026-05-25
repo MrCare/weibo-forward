@@ -18,6 +18,7 @@ Automates Weibo reposts: watch a source account’s timeline, generate repost te
 - [Deployment modes](#deployment-modes)
 - [Configuration](#configuration)
 - [Web admin](#web-admin)
+- [User guide (ZH)](#user-guide-zh)
 - [API](#api)
 - [Architecture](#architecture)
 - [Data paths](#data-paths)
@@ -160,6 +161,10 @@ Cron examples: `0 9 * * *` (daily 09:00), `0 */2 * * *` (every 2 hours), `30 8 *
 See [Screenshots](#screenshots). Manage accounts, rules, cron, jobs (including dry-run), history, and prompt settings. UI supports English and Chinese.
 
 QR login: create account → `POST .../login-sessions` → open `webUrl` → scan with the Weibo app → session saved under `data/tenants/`.
+
+## User guide (ZH)
+
+For a step-by-step Chinese guide covering login, Weibo account binding, comment style, rules, dry-run, history, and copy actions, see [docs/web-user-guide.zh-CN.md](docs/web-user-guide.zh-CN.md).
 
 ## API
 

@@ -24,6 +24,10 @@ const state = {
   lastRunDryRun: false,
 };
 
+let runLogPollTimer = null;
+let runLogPollToken = 0;
+let runLogOffset = 0;
+
 function isAdminUser() {
   return state.user?.role === "admin";
 }
@@ -54,13 +58,63 @@ function scrollExecutionLogToBottom() {
   });
 }
 
+function refreshExecutionLogPanel() {
+  const el = document.getElementById("executionLogPanel");
+  if (!el) return;
+  el.textContent = state.executionLog.length
+    ? state.executionLog.join("\n")
+    : state.runBusy
+      ? t("executionLogRunning")
+      : t("executionLogEmpty");
+}
+
 function appendExecutionLogs(lines, { dryRun = false } = {}) {
   if (!Array.isArray(lines)) return;
   for (const line of lines) {
     if (line) state.executionLog.push(line);
   }
   state.lastRunDryRun = !!dryRun;
+  refreshExecutionLogPanel();
   scrollExecutionLogToBottom();
+}
+
+function stopRunLogPolling() {
+  runLogPollToken += 1;
+  if (runLogPollTimer) {
+    clearTimeout(runLogPollTimer);
+    runLogPollTimer = null;
+  }
+}
+
+function startRunLogPolling({ dryRun = false } = {}) {
+  stopRunLogPolling();
+  runLogOffset = 0;
+  state.lastRunDryRun = !!dryRun;
+  const token = runLogPollToken;
+
+  const tick = async () => {
+    if (!state.runBusy || token !== runLogPollToken) return;
+    try {
+      const data = await api(`/api/v1/run-log?offset=${runLogOffset}`);
+      if (token !== runLogPollToken) return;
+      if (Array.isArray(data.lines) && data.lines.length) {
+        appendExecutionLogs(data.lines, { dryRun: data.dryRun ?? dryRun });
+      }
+      if (typeof data.nextOffset === "number") {
+        runLogOffset = data.nextOffset;
+      }
+      state.lastRunDryRun = !!(data.dryRun ?? state.lastRunDryRun);
+      if (state.runBusy) {
+        runLogPollTimer = setTimeout(tick, data.running === false ? 200 : 800);
+      }
+    } catch {
+      if (state.runBusy && token === runLogPollToken) {
+        runLogPollTimer = setTimeout(tick, 1200);
+      }
+    }
+  };
+
+  void tick();
 }
 
 function applyRunBusyUi() {
@@ -68,8 +122,8 @@ function applyRunBusyUi() {
     el.disabled = state.runBusy;
     el.setAttribute("aria-busy", state.runBusy ? "true" : "false");
   });
-  const panel = document.getElementById("executionLogPanel");
-  if (panel && state.runBusy) scrollExecutionLogToBottom();
+  refreshExecutionLogPanel();
+  if (state.runBusy) scrollExecutionLogToBottom();
 }
 
 async function runWithLock(taskLabel, fn) {
@@ -77,6 +131,7 @@ async function runWithLock(taskLabel, fn) {
     toast(t("runInProgress"), "error");
     return null;
   }
+  stopRunLogPolling();
   state.runBusy = true;
   state.executionLog = [];
   state.lastRunDryRun = false;
@@ -87,6 +142,7 @@ async function runWithLock(taskLabel, fn) {
   try {
     return await fn();
   } finally {
+    stopRunLogPolling();
     state.runBusy = false;
     applyRunBusyUi();
     if (location.hash === "#/dashboard" || location.hash === "#/rules") render();
@@ -365,6 +421,7 @@ async function runAll(dryRun) {
     try {
       const payload = { dryRun };
       if (isAdminUser() && state.scopeUserId) payload.userId = state.scopeUserId;
+      startRunLogPolling({ dryRun });
       const data = await api("/api/v1/rules/run-all", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -731,6 +788,7 @@ function bindRules() {
 async function runRule(ruleId, dryRun) {
   await runWithLock(dryRun ? t("dryRun") : t("run"), async () => {
     try {
+      startRunLogPolling({ dryRun });
       const data = await api(`/api/v1/rules/${ruleId}/run`, {
         method: "POST",
         body: JSON.stringify({ dryRun }),

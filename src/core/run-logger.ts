@@ -1,11 +1,15 @@
 /** 收集转发任务 CLI 风格日志，并回传给管理台展示 */
 export class RunLogger {
   private readonly lines: string[] = [];
+  constructor(private readonly onLine?: (line: string) => void) {}
 
   log(message: string): void {
     const text = String(message);
     for (const line of text.split("\n")) {
-      if (line.length > 0) this.lines.push(line);
+      if (line.length > 0) {
+        this.lines.push(line);
+        this.onLine?.(line);
+      }
     }
     console.log(text);
   }

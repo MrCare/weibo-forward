@@ -1,11 +1,18 @@
 import { readFile } from "node:fs/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
 import express, { type Response } from "express";
 import { z } from "zod";
 import { loadEnvSettings } from "../config.js";
 import { describeCommentGenerator } from "../core/comment-generator-factory.js";
+import {
+  appendActorRunLog,
+  finishActorRun,
+  getActorRunLogSnapshot,
+  startActorRun,
+} from "../core/live-run-log-store.js";
 import { RunInProgressError, withRunLock } from "../core/run-lock.js";
 import { RunLogger } from "../core/run-logger.js";
 import { getDatabase } from "../db/client.js";
@@ -59,6 +66,26 @@ const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../public")
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ALLOW_REGISTER = process.env.ALLOW_REGISTER !== "false";
+
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function getLanBaseUrls(port: number): string[] {
+  const urls = new Set<string>();
+  const nets = networkInterfaces();
+
+  for (const entries of Object.values(nets)) {
+    for (const item of entries ?? []) {
+      const family = String(item.family);
+      if (family !== "IPv4" && family !== "4") continue;
+      if (item.internal) continue;
+      urls.add(`http://${item.address}:${port}`);
+    }
+  }
+
+  return [...urls].sort();
+}
 
 function routeParam(value: string | string[] | undefined): string {
   if (typeof value === "string") return value;
@@ -231,6 +258,15 @@ export function createApp() {
       username: req.user!.username,
       role: req.user!.role,
     });
+  });
+
+  app.get("/api/v1/run-log", requireAuth, (req: AuthedRequest, res) => {
+    try {
+      const offset = z.coerce.number().int().min(0).default(0).parse(req.query.offset ?? 0);
+      res.json(getActorRunLogSnapshot(req.user!.id, offset));
+    } catch (err) {
+      handleError(res, err);
+    }
   });
 
   app.get("/api/v1/prompt-templates", requireAuth, (_req: AuthedRequest, res) => {
@@ -651,12 +687,20 @@ export function createApp() {
       const actorId = req.user!.id;
 
       const result = await withRunLock(actorId, async () => {
-        const logger = new RunLogger();
-        return runTenantRule(db, req.user!, routeParam(req.params.ruleId), {
-          headless: env.headless,
-          dryRun: env.dryRun,
-          logger,
-        });
+        startActorRun(actorId, !!env.dryRun);
+        const logger = new RunLogger((line) => appendActorRunLog(actorId, line));
+        try {
+          return await runTenantRule(db, req.user!, routeParam(req.params.ruleId), {
+            headless: env.headless,
+            dryRun: env.dryRun,
+            logger,
+          });
+        } catch (err) {
+          logger.log(`[error] ${err instanceof Error ? err.message : String(err)}`);
+          throw err;
+        } finally {
+          finishActorRun(actorId);
+        }
       });
 
       res.json(result);
@@ -676,8 +720,16 @@ export function createApp() {
       const actorId = req.user!.id;
 
       const result = await withRunLock(actorId, async () => {
-        const logger = new RunLogger();
-        return runTenantAllRules(db, req.user!, { ...env, logger }, scopeUserId);
+        startActorRun(actorId, !!env.dryRun);
+        const logger = new RunLogger((line) => appendActorRunLog(actorId, line));
+        try {
+          return await runTenantAllRules(db, req.user!, { ...env, logger }, scopeUserId);
+        } catch (err) {
+          logger.log(`[error] ${err instanceof Error ? err.message : String(err)}`);
+          throw err;
+        } finally {
+          finishActorRun(actorId);
+        }
       });
 
       res.json(result);
@@ -693,11 +745,25 @@ export function startApiServer(): void {
   const db = getDatabase();
   reloadCronScheduler(db);
   const app = createApp();
+  const localhostBase = `http://127.0.0.1:${PORT}`;
+  const publicBase = process.env.PUBLIC_BASE_URL?.trim()
+    ? normalizeBaseUrl(process.env.PUBLIC_BASE_URL)
+    : null;
+  const lanBases = getLanBaseUrls(PORT);
+
   app.listen(PORT, () => {
-    console.log(`API 服务已启动: http://0.0.0.0:${PORT}`);
+    console.log(`API 服务已启动: ${localhostBase}`);
+    console.log(`管理控制台: ${localhostBase}/admin/`);
+    for (const base of lanBases) {
+      console.log(`局域网访问: ${base}`);
+      console.log(`局域网控制台: ${base}/admin/`);
+    }
+    if (publicBase) {
+      console.log(`对外访问地址(PUBLIC_BASE_URL): ${publicBase}`);
+      console.log(`对外管理控制台: ${publicBase}/admin/`);
+    }
     console.log(`健康检查: GET /health`);
     console.log(`评语生成: ${describeCommentGenerator()}`);
-    console.log(`管理控制台: http://0.0.0.0:${PORT}/admin/`);
     console.log(`扫码登录页: GET /web/login.html?sessionId=...&token=...`);
     if (ALLOW_REGISTER) console.log("开放注册: POST /api/v1/auth/register");
   });

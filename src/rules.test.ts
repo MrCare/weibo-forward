@@ -39,7 +39,9 @@ rules:
     assert.equal(listEnabledRules(rules).length, 1);
 
     const storage = resolveAccountStorageState(rules.accounts[0]!);
-    assert.ok(storage.includes("accounts/acc-a/storageState.json"));
+    assert.ok(
+      storage.endsWith(path.join("data", "accounts", "acc-a", "storageState.json")),
+    );
   });
 
   it("未知 forwardAccountId 时报错", async () => {

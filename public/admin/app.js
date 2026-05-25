@@ -4,8 +4,30 @@ initLocale();
 
 const STORAGE_KEY = "wf_admin";
 
+function isLoopbackHostname(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isLoopbackBase(base) {
+  try {
+    return isLoopbackHostname(new URL(base, location.origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function resolveInitialApiBase() {
+  const saved = localStorage.getItem(STORAGE_KEY + "_base");
+  if (!saved) return location.origin;
+  const currentIsLoopback = isLoopbackHostname(location.hostname);
+  if (!currentIsLoopback && isLoopbackBase(saved)) {
+    return location.origin;
+  }
+  return saved;
+}
+
 const state = {
-  apiBase: localStorage.getItem(STORAGE_KEY + "_base") || location.origin,
+  apiBase: resolveInitialApiBase(),
   apiKey: localStorage.getItem(STORAGE_KEY + "_key") || "",
   user: null,
   health: null,

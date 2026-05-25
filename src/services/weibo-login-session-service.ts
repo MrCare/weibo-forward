@@ -188,6 +188,7 @@ async function runLoginBrowserJob(
 export function startWeiboLoginSession(
   userId: string,
   forwardAccountId: string,
+  baseUrl: string,
 ): { sessionId: string; loginToken: string; webUrl: string } {
   const db = getDatabase();
   const account = getAccount(db, userId, forwardAccountId);
@@ -196,7 +197,6 @@ export function startWeiboLoginSession(
   }
 
   const session = createLoginSession(db, userId, forwardAccountId);
-  const baseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
 
   void runLoginBrowserJob(db, userId, forwardAccountId, session.id);
 

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
-import express, { type Response } from "express";
+import express, { type Request, type Response } from "express";
 import { z } from "zod";
 import { loadEnvSettings } from "../config.js";
 import { describeCommentGenerator } from "../core/comment-generator-factory.js";
@@ -69,6 +69,35 @@ const ALLOW_REGISTER = process.env.ALLOW_REGISTER !== "false";
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isLoopbackBaseUrl(url: string): boolean {
+  try {
+    return isLoopbackHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getRequestOrigin(req: Request): string {
+  const forwardedProto = req.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const forwardedHost = req.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const proto = forwardedProto || req.protocol || "http";
+  const host = forwardedHost || req.get("host");
+  if (!host) return `http://localhost:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+function resolvePublicBaseUrl(req: Request): string {
+  const configured = process.env.PUBLIC_BASE_URL?.trim();
+  if (configured && !isLoopbackBaseUrl(configured)) {
+    return normalizeBaseUrl(configured);
+  }
+  return normalizeBaseUrl(getRequestOrigin(req));
 }
 
 function getLanBaseUrls(port: number): string[] {
@@ -175,6 +204,7 @@ function mapForwardRecord(r: ForwardRecordRow) {
 
 export function createApp() {
   const app = express();
+  app.set("trust proxy", true);
   app.use(express.json({ limit: "2mb" }));
   app.use("/web", express.static(join(PUBLIC_DIR, "web")));
   app.use("/admin", express.static(join(PUBLIC_DIR, "admin")));
@@ -451,7 +481,11 @@ export function createApp() {
           res.status(404).json({ error: "账号不存在" });
           return;
         }
-        const result = startWeiboLoginSession(account.user_id, accountId);
+        const result = startWeiboLoginSession(
+          account.user_id,
+          accountId,
+          resolvePublicBaseUrl(req),
+        );
         res.status(201).json(result);
       } catch (err) {
         handleError(res, err);

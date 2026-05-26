@@ -132,6 +132,15 @@ export function buildForwardUserPrompt(postText: string, templateId?: PromptTemp
   return `请为以下微博写转发评语。只输出评语正文：\n\n${postText}`;
 }
 
+export function inferPromptTemplateIdFromSystemPrompt(
+  systemPrompt: string,
+): PromptTemplateId | undefined {
+  for (const meta of Object.values(PROMPT_TEMPLATES)) {
+    if (systemPrompt === meta.systemPrompt) return meta.id;
+  }
+  return undefined;
+}
+
 export function parseRulePromptProfile(profile: string | null | undefined): {
   templateId?: PromptTemplateId;
   customPrompt?: string;

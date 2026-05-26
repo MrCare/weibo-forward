@@ -1,8 +1,7 @@
 import {
   buildForwardUserPrompt,
-  DEFAULT_PROMPT_TEMPLATE_ID,
   FORWARD_SYSTEM_PROMPT,
-  PROMPT_TEMPLATES,
+  inferPromptTemplateIdFromSystemPrompt,
 } from "../prompt-templates.js";
 import type { CommentGenerator } from "./interfaces.js";
 
@@ -35,7 +34,7 @@ export class QwenApiCommentGenerator implements CommentGenerator {
 
   async generate(postText: string, systemPrompt?: string): Promise<string> {
     const sys = systemPrompt ?? FORWARD_SYSTEM_PROMPT;
-    const tplId = inferTemplateIdFromSystemPrompt(sys);
+    const tplId = inferPromptTemplateIdFromSystemPrompt(sys);
     const userPrompt = buildForwardUserPrompt(postText, tplId);
     const url = `${this.baseUrl}/chat/completions`;
 
@@ -72,11 +71,4 @@ export class QwenApiCommentGenerator implements CommentGenerator {
 
     return truncateComment(content);
   }
-}
-
-function inferTemplateIdFromSystemPrompt(systemPrompt: string) {
-  for (const meta of Object.values(PROMPT_TEMPLATES)) {
-    if (systemPrompt === meta.systemPrompt) return meta.id;
-  }
-  return DEFAULT_PROMPT_TEMPLATE_ID;
 }

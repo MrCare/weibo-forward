@@ -1,20 +1,11 @@
 import { spawn } from "node:child_process";
 import {
   buildForwardUserPrompt,
-  DEFAULT_PROMPT_TEMPLATE_ID,
   FORWARD_SYSTEM_PROMPT,
-  PROMPT_TEMPLATES,
+  inferPromptTemplateIdFromSystemPrompt,
   resolveUserPromptTemplateId,
-  type PromptTemplateId,
   type UserPromptSettings,
 } from "./prompt-templates.js";
-
-function inferTemplateIdFromSystemPrompt(systemPrompt: string): PromptTemplateId | undefined {
-  for (const meta of Object.values(PROMPT_TEMPLATES)) {
-    if (systemPrompt === meta.systemPrompt) return meta.id;
-  }
-  return undefined;
-}
 
 const QWEN_BIN = "qwen";
 
@@ -48,8 +39,8 @@ export async function generateForwardComment(
   const tplId =
     userSettings != null
       ? resolveUserPromptTemplateId(userSettings, ruleProfile)
-      : inferTemplateIdFromSystemPrompt(sys);
-  const userPrompt = buildForwardUserPrompt(postText, tplId ?? DEFAULT_PROMPT_TEMPLATE_ID);
+      : inferPromptTemplateIdFromSystemPrompt(sys);
+  const userPrompt = buildForwardUserPrompt(postText, tplId);
   const args = [
     "-y",
     "-o",

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_PROMPT_TEMPLATE_ID,
   formatRulePromptProfile,
+  inferPromptTemplateIdFromSystemPrompt,
   parseRulePromptProfile,
   PROMPT_TEMPLATES,
   resolveSystemPrompt,
@@ -30,6 +31,13 @@ describe("prompt-templates", () => {
       customPrompt: "用户自定义",
     });
     assert.equal(sys, "用户自定义");
+  });
+
+  it("自定义 system prompt 不会被误判为李白模板", () => {
+    assert.equal(
+      inferPromptTemplateIdFromSystemPrompt("你是一位普通中文写手，写 1 到 2 句自然转发评语。"),
+      undefined,
+    );
   });
 
   it("format 与 parse 可往返", () => {

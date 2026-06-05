@@ -9,6 +9,14 @@ export const SELECTORS = {
   forwardRetweetRegion: '[class*="_retweet_"]',
   /** 转发评语输入框（弹层打开后出现） */
   forwardCommentTextarea: 'textarea[placeholder*="说说分享心得"]',
+  /** 转发弹层容器（避免点到详情页其它「转发」按钮） */
+  forwardComposerRoots: [
+    '[role="dialog"]',
+    '[class*="woo-modal-main"]',
+    '[class*="woo-dialog-main"]',
+    '[class*="woo-pop-wrap"]',
+    '[class*="Retweet_pop"]',
+  ],
   /** 弹层确认「转发」 */
   forwardSubmitButton: 'button.woo-button-primary',
   /** 登录页二维码区域（passport / newlogin） */

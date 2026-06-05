@@ -61,3 +61,44 @@ export async function ensureWeiboHomeLoggedIn(
 
   return false;
 }
+
+/** 未登录时微博常展示的软墙文案 */
+export async function detectWeiboLoginWall(page: Page): Promise<string | null> {
+  const wall = await page.evaluate(() => {
+    const t = document.body?.innerText ?? "";
+    const m = t.match(
+      /前方拥堵[，,]?\s*请登录后使用|请登录后查看|登录后可见|登录后使用/,
+    );
+    return m?.[0] ?? null;
+  });
+  if (wall) return wall;
+
+  const guestNav = await page.evaluate(() => {
+    const nav = document.querySelector("header, nav, [class*='Nav']");
+    if (!nav) return false;
+    return [...nav.querySelectorAll("a, button")].some(
+      (el) => (el.textContent ?? "").trim() === "登录",
+    );
+  });
+  if (guestNav && !(await isLoggedInOnWeibo(page))) {
+    return "页面显示「登录」入口，当前未登录";
+  }
+
+  return null;
+}
+
+/** 转发/互动前确认已登录，避免在未登录页空点转发 */
+export async function assertWeiboLoggedIn(page: Page): Promise<void> {
+  if (await isLoggedInOnWeibo(page)) return;
+
+  const wall = await detectWeiboLoginWall(page);
+  if (wall) {
+    throw new Error(`微博登录态已失效（${wall}），请在控制台重新扫码登录`);
+  }
+
+  if (isLoginPageUrl(page.url())) {
+    throw new Error("微博登录态已失效（已跳转登录页），请在控制台重新扫码登录");
+  }
+
+  throw new Error("微博登录态已失效或未识别到已登录用户，请在控制台重新扫码登录");
+}

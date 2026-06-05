@@ -90,21 +90,77 @@ async function openForwardComposer(page: Page): Promise<void> {
   }
 }
 
+function forwardSubmitButton(page: Page): Locator {
+  return page
+    .locator(SELECTORS.forwardSubmitButton)
+    .filter({ hasText: /^转发$/ })
+    .first();
+}
+
 async function fillForwardComment(page: Page, comment: string): Promise<void> {
   const textarea = forwardCommentTextarea(page);
   await textarea.click();
   await textarea.fill(comment);
+  // 微博弹层为受控输入，仅 fill 时确认按钮可能仍为 disabled（见 scripts/debug-forward-confirm.ts）
+  await textarea.press(" ");
+  await textarea.press("Backspace");
 }
 
-async function confirmForward(page: Page): Promise<void> {
-  const submit = page
-    .locator(SELECTORS.forwardSubmitButton)
-    .filter({ hasText: /^转发$/ })
-    .first();
+async function waitForForwardSubmitEnabled(page: Page, timeoutMs = 8000): Promise<Locator> {
+  const submit = forwardSubmitButton(page);
   if (!(await submit.isVisible({ timeout: 5000 }).catch(() => false))) {
     throw new Error("未找到确认「转发」按钮");
   }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await submit.isDisabled().catch(() => true))) return submit;
+    await page.waitForTimeout(200);
+  }
+
+  throw new Error("转发按钮仍为禁用状态，评语可能未正确填入");
+}
+
+async function detectForwardFailureMessage(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const t = document.body?.innerText ?? "";
+    const m = t.match(
+      /操作过于频繁|转发失败|发送失败|请稍后再试|验证码|账号异常|内容不符合|审核/,
+    );
+    return m?.[0] ?? null;
+  });
+}
+
+/** 确认弹层关闭或出现成功提示，避免「点了按钮但实际未发出」 */
+async function verifyForwardSubmitted(page: Page, timeoutMs = 15_000): Promise<void> {
+  const textarea = forwardCommentTextarea(page);
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const err = await detectForwardFailureMessage(page);
+    if (err) {
+      throw new Error(`微博拒绝转发：${err}`);
+    }
+
+    const success = await page.evaluate(() => {
+      const t = document.body?.innerText ?? "";
+      return /转发成功|已转发/.test(t);
+    });
+    if (success) return;
+
+    const composerOpen = await textarea.isVisible().catch(() => false);
+    if (!composerOpen) return;
+
+    await page.waitForTimeout(400);
+  }
+
+  throw new Error("转发弹层未关闭，可能未成功提交（请检查是否触发风控或频率限制）");
+}
+
+async function confirmForward(page: Page): Promise<void> {
+  const submit = await waitForForwardSubmitEnabled(page);
   await submit.click({ timeout: 10_000 });
+  await verifyForwardSubmitted(page);
 }
 
 async function saveErrorScreenshot(page: Page, mid: string): Promise<string> {

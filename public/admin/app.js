@@ -588,7 +588,10 @@ function showQrModal(session, accountId) {
     <div class="modal">
       <h2>${t("qrTitle")}</h2>
       <p class="muted" id="qrStatus">${t("qrLoading")}</p>
-      <img id="qrImg" alt="QR" />
+      <div id="qrBox" class="qr-box">
+        <div id="qrLoading" class="qr-loading">${t("qrLoading")}</div>
+        <img id="qrImg" alt="QR" hidden />
+      </div>
       <div class="actions" style="margin-top:1rem">
         <a class="btn secondary" href="${esc(session.webUrl)}" target="_blank" rel="noopener">${t("qrOpenWindow")}</a>
         <button class="secondary" id="qrClose">${t("close")}</button>
@@ -597,12 +600,32 @@ function showQrModal(session, accountId) {
 
   document.body.appendChild(backdrop);
   const statusEl = backdrop.querySelector("#qrStatus");
+  const loadingEl = backdrop.querySelector("#qrLoading");
   const img = backdrop.querySelector("#qrImg");
+  let qrLoaded = false;
 
-  function refreshImg() {
-    img.src = qrUrl + "&t=" + Date.now();
+  async function tryLoadQr() {
+    if (qrLoaded) return;
+    try {
+      const res = await fetch(`${qrUrl}&t=${Date.now()}`);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      await new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("qr decode failed"));
+        img.src = objectUrl;
+      });
+      loadingEl.hidden = true;
+      img.hidden = false;
+      qrLoaded = true;
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      /* 保持 loading，等待下次轮询 */
+    }
   }
-  refreshImg();
+
+  void tryLoadQr();
 
   const timer = setInterval(async () => {
     try {
@@ -622,8 +645,8 @@ function showQrModal(session, accountId) {
         clearInterval(timer);
         return;
       }
-      statusEl.textContent = t("qrScanHint");
-      refreshImg();
+      statusEl.textContent = qrLoaded ? t("qrScanHint") : t("qrLoading");
+      void tryLoadQr();
     } catch {
       /* ignore */
     }

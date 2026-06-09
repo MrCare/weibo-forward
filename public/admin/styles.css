@@ -812,11 +812,24 @@ button[data-run-action]:disabled {
   margin-top: 0;
 }
 
-.modal img {
-  width: 100%;
+.qr-box {
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 1rem 0;
   border-radius: var(--radius);
   background: #fff;
-  margin: 1rem 0;
+}
+
+.qr-box img {
+  width: 100%;
+  border-radius: var(--radius);
+}
+
+.qr-loading {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .modal .actions {

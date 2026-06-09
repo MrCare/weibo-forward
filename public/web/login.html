@@ -30,6 +30,10 @@
       max-height: 240px;
       border-radius: 4px;
     }
+    .qr-loading {
+      color: #999;
+      font-size: 0.9rem;
+    }
     #status { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: #f0f4ff; }
     .ok { background: #e8f5e9 !important; color: #1b5e20; }
     .err { background: #ffebee !important; color: #b71c1c; }
@@ -40,7 +44,7 @@
 <body>
   <h1>微博扫码登录</h1>
   <p class="hint">请使用微博 App 扫描下方二维码。若长时间无码，请关闭本页后在控制台重新发起扫码。</p>
-  <div id="qr"><span>正在连接服务器…</span></div>
+  <div id="qr"><span class="qr-loading">正在加载二维码…</span></div>
   <div id="status">等待中…</div>
   <script>
     const params = new URLSearchParams(location.search);
@@ -61,18 +65,38 @@
         statusEl.className = cls || "";
       }
 
-      function loadQr() {
+      let qrLoaded = false;
+
+      function showQrLoading() {
+        if (qrLoaded) return;
+        qrEl.innerHTML = "<span class='qr-loading'>正在加载二维码…</span>";
+      }
+
+      async function loadQr() {
+        if (qrLoaded) return;
         const qrUrl = `${apiBase}/api/v1/public/login-sessions/${sessionId}/qr?token=${encodeURIComponent(token)}&t=${Date.now()}`;
-        const img = document.createElement("img");
-        img.alt = "微博登录二维码";
-        img.onload = () => {
+        try {
+          const res = await fetch(qrUrl);
+          if (!res.ok) {
+            showQrLoading();
+            return;
+          }
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          const img = document.createElement("img");
+          img.alt = "微博登录二维码";
+          await new Promise((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error("qr decode failed"));
+            img.src = objectUrl;
+          });
           qrEl.innerHTML = "";
           qrEl.appendChild(img);
-        };
-        img.onerror = () => {
-          qrEl.innerHTML = "<span style='color:#999;font-size:0.9rem'>二维码尚未就绪，2 秒后重试…</span>";
-        };
-        img.src = qrUrl;
+          qrLoaded = true;
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          showQrLoading();
+        }
       }
 
       async function poll() {

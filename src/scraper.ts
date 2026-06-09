@@ -11,56 +11,73 @@ export interface ScrapeOptions {
   maxScrolls?: number;
 }
 
-async function extractPostsFromPage(page: Page): Promise<WeiboPost[]> {
-  return page.evaluate((textSelectors) => {
-    const seen = new Set<string>();
-    const results: { mid: string; text: string; detailUrl: string }[] = [];
+async function extractPostsFromPage(
+  page: Page,
+  sourceUid: string,
+): Promise<WeiboPost[]> {
+  return page.evaluate(
+    ({ textSelectors, sourceUid }) => {
+      const seen = new Set<string>();
+      const results: { mid: string; text: string; detailUrl: string }[] = [];
+      const postUrlRe = new RegExp(
+        `weibo\\.com\\/${sourceUid}\\/([A-Za-z0-9]+)`,
+        "i",
+      );
+      const cardSelector = '[action-type="feed_list_item"], article';
+      const allCards = [
+        ...document.querySelectorAll<Element>(cardSelector),
+      ];
+      const cards = allCards.filter(
+        (card) =>
+          !allCards.some((other) => other !== card && other.contains(card)),
+      );
 
-    const links = document.querySelectorAll<HTMLAnchorElement>('a[href*="/"]');
-    for (const a of links) {
-      const href = a.href;
-      const m = href.match(/weibo\.com\/(\d+)\/([A-Za-z0-9]+)/);
-      if (!m) continue;
-
-      const mid = m[2]!;
-      if (seen.has(mid)) continue;
-      seen.add(mid);
-
-      let card: Element | null = a;
-      for (let up = 0; up < 8 && card; up++) {
-        card = card.parentElement;
-        if (card?.getAttribute("action-type") === "feed_list_item") break;
-        if (card?.tagName === "ARTICLE") break;
-      }
-
-      let text = "";
-      const root = card ?? a.closest("article") ?? a.parentElement?.parentElement;
-      if (root) {
-        for (const sel of textSelectors) {
-          const node = root.querySelector(sel);
-          if (node?.textContent?.trim()) {
-            text = node.textContent.trim();
+      for (const card of cards) {
+        let mid: string | null = null;
+        for (const a of card.querySelectorAll<HTMLAnchorElement>('a[href*="/"]')) {
+          const m = a.href.match(postUrlRe);
+          if (m) {
+            mid = m[1]!;
             break;
           }
         }
+        if (!mid || seen.has(mid)) continue;
+        seen.add(mid);
+
+        let text = "";
+        for (const sel of textSelectors) {
+          for (const node of card.querySelectorAll(sel)) {
+            const quote = node.closest('[class*="quote"], [class*="Quote"]');
+            if (quote && quote !== card) continue;
+            const t = node.textContent?.trim();
+            if (t) {
+              text = t;
+              break;
+            }
+          }
+          if (text) break;
+        }
         if (!text) {
-          const clone = root.cloneNode(true) as HTMLElement;
+          const clone = card.cloneNode(true) as HTMLElement;
           clone
-            .querySelectorAll("a, button, [class*='toolbar'], [class*='action']")
+            .querySelectorAll(
+              '[class*="quote"], [class*="Quote"], a, button, [class*="toolbar"], [class*="action"]',
+            )
             .forEach((el) => el.remove());
           text = (clone.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
         }
+
+        results.push({
+          mid,
+          text: text || "(无正文)",
+          detailUrl: `https://weibo.com/${sourceUid}/${mid}`,
+        });
       }
 
-      results.push({
-        mid,
-        text: text || "(无正文)",
-        detailUrl: `https://weibo.com/${m[1]}/${mid}`,
-      });
-    }
-
-    return results;
-  }, [...SELECTORS.postText]);
+      return results;
+    },
+    { textSelectors: [...SELECTORS.postText], sourceUid },
+  );
 }
 
 function mergePosts(existing: WeiboPost[], batch: WeiboPost[]): WeiboPost[] {
@@ -96,7 +113,7 @@ export async function scrapeSourceTimeline(
   let allPosts: WeiboPost[] = [];
 
   for (let scroll = 0; scroll <= maxScrolls; scroll++) {
-    const batch = await extractPostsFromPage(page);
+    const batch = await extractPostsFromPage(page, sourceUid);
     allPosts = mergePosts(allPosts, batch);
 
     const unforwarded = allPosts.filter((p) => !forwardedMids.has(p.mid));

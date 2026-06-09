@@ -98,6 +98,7 @@ export class DefaultJobRunner implements JobRunner {
     for (let i = 0; i < toProcess.length; i++) {
       const post = toProcess[i]!;
       log(`--- [${i + 1}/${toProcess.length}] mid=${post.mid} ---`);
+      log(`链接: ${post.detailUrl}`);
       log(
         `原文: ${post.text.slice(0, 120)}${post.text.length > 120 ? "…" : ""}`,
       );

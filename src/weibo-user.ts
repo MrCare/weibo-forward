@@ -2,9 +2,8 @@ import type { BrowserContext, Page } from "playwright";
 
 const STATUS_HREF_RE = /weibo\.com\/(\d+)\/([A-Za-z0-9]+)/;
 
-/** 从当前登录态页面解析自己的 UID */
-export async function getLoggedInUid(page: Page): Promise<string> {
-  const uid = await page.evaluate(() => {
+async function readUidFromPage(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
     const w = window as Window & { $CONFIG?: { uid?: string | number } };
     if (w.$CONFIG?.uid) return String(w.$CONFIG.uid);
 
@@ -19,6 +18,25 @@ export async function getLoggedInUid(page: Page): Promise<string> {
 
     return candidates[0] ?? null;
   });
+}
+
+/** 从当前登录态页面解析自己的 UID（必要时先打开微博首页） */
+export async function getLoggedInUid(page: Page): Promise<string> {
+  let uid = await readUidFromPage(page);
+
+  if (!uid && !page.url().includes("weibo.com")) {
+    await gotoWithRetry(page, "https://weibo.com");
+    await page.waitForTimeout(2000);
+    uid = await readUidFromPage(page);
+  }
+
+  if (!uid) {
+    const deadline = Date.now() + 12_000;
+    while (!uid && Date.now() < deadline) {
+      await page.waitForTimeout(800);
+      uid = await readUidFromPage(page);
+    }
+  }
 
   if (!uid) {
     throw new Error("无法获取当前登录用户 UID，请确认已登录微博");

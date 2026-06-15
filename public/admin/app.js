@@ -33,6 +33,12 @@ const state = {
   health: null,
   accounts: [],
   rules: [],
+  cleanupRules: [],
+  cleanupRecords: [],
+  cleanupRecordTotal: 0,
+  cleanupDeletedTotal: 0,
+  cleanupRecordFilters: { accountId: "", limit: 20, offset: 0 },
+  judgeTemplates: [],
   records: [],
   recordTotal: 0,
   recordFilters: { accountId: "", sourceUid: "", limit: 20, offset: 0 },
@@ -268,6 +274,26 @@ function esc(s) {
   return d.innerHTML;
 }
 
+/** 表格操作列：按钮一字排开 */
+function renderTableActions({
+  id,
+  enabled,
+  runClass,
+  dryClass,
+  toggleClass,
+  deleteClass,
+}) {
+  return `
+      <td class="table-actions-cell">
+        <div class="table-actions">
+          <button class="secondary ${runClass}" data-run-action data-id="${esc(id)}">${t("run")}</button>
+          <button class="secondary ${dryClass}" data-run-action data-id="${esc(id)}">${t("dryRun")}</button>
+          <button class="secondary ${toggleClass}" data-id="${esc(id)}" data-on="${enabled}">${enabled ? t("disable") : t("enable")}</button>
+          <button class="danger ${deleteClass}" data-id="${esc(id)}">${t("delete")}</button>
+        </div>
+      </td>`;
+}
+
 // --- views ---
 
 function pageHeader(title, subtitle = "") {
@@ -360,7 +386,9 @@ function shell(content, active) {
           <a href="#/dashboard" class="${active === "dashboard" ? "active" : ""}">${t("navDashboard")}</a>
           <a href="#/accounts" class="${active === "accounts" ? "active" : ""}">${t("navAccounts")}</a>
           <a href="#/rules" class="${active === "rules" ? "active" : ""}">${t("navRules")}</a>
+          <a href="#/cleanup-rules" class="${active === "cleanup-rules" ? "active" : ""}">${t("navCleanupRules")}</a>
           <a href="#/records" class="${active === "records" ? "active" : ""}">${t("navRecords")}</a>
+          <a href="#/cleanup-records" class="${active === "cleanup-records" ? "active" : ""}">${t("navCleanupRecords")}</a>
           <a href="#/settings" class="${active === "settings" ? "active" : ""}">${t("navSettings")}</a>
         </nav>
         <div class="sidebar-footer">
@@ -679,12 +707,14 @@ function renderRules() {
       <td>${r.limit}</td>
       <td><code style="font-size:0.7rem">${esc(r.schedule || "—")}</code></td>
       <td><span class="badge ${r.enabled ? "on" : "off"}">${r.enabled ? t("enabled") : t("disabled")}</span></td>
-      <td>
-        <button class="secondary btn-run" data-run-action data-id="${esc(r.id)}">${t("run")}</button>
-        <button class="secondary btn-dry" data-run-action data-id="${esc(r.id)}">${t("dryRun")}</button>
-        <button class="secondary btn-toggle" data-id="${esc(r.id)}" data-on="${r.enabled}">${r.enabled ? t("disable") : t("enable")}</button>
-        <button class="danger btn-del-rule" data-id="${esc(r.id)}">${t("delete")}</button>
-      </td>
+      ${renderTableActions({
+        id: r.id,
+        enabled: r.enabled,
+        runClass: "btn-run",
+        dryClass: "btn-dry",
+        toggleClass: "btn-toggle",
+        deleteClass: "btn-del-rule",
+      })}
     </tr>`,
     )
     .join("");
@@ -736,7 +766,7 @@ function renderRules() {
       <div class="table-scroll">
       <table>
         <thead>
-          <tr><th>${t("colId")}</th><th>${t("colAccount")}</th><th>${t("colSourceUid")}</th><th>limit</th><th>${t("colSchedule")}</th><th>${t("colStatus")}</th><th>${t("colActions")}</th></tr>
+          <tr><th>${t("colId")}</th><th>${t("colAccount")}</th><th>${t("colSourceUid")}</th><th>limit</th><th>${t("colSchedule")}</th><th>${t("colStatus")}</th><th class="table-actions-head">${t("colActions")}</th></tr>
         </thead>
         <tbody>${rows || `<tr><td colspan="7" class="muted">${t("noRules")}</td></tr>`}</tbody>
       </table>
@@ -853,6 +883,312 @@ async function runRule(ruleId, dryRun) {
       toast(e.message, "error");
       throw e;
     }
+  });
+}
+
+function judgeTemplateOptions(selectedId) {
+  const templates = state.judgeTemplates.length
+    ? state.judgeTemplates
+    : [{ id: "dreame-video-negative", nameKey: "judgeDreameVideoNegative" }];
+  return templates
+    .map(
+      (tpl) =>
+        `<option value="${esc(tpl.id)}" ${selectedId === tpl.id ? "selected" : ""}>${esc(t(tpl.nameKey))}</option>`,
+    )
+    .join("");
+}
+
+function defaultCleanupSinceDate() {
+  const y = new Date().getFullYear();
+  return `${y}-05-01`;
+}
+
+function defaultCleanupUntilDate() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function renderCleanupRules() {
+  const accOpts = state.accounts
+    .map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`)
+    .join("");
+
+  const rows = state.cleanupRules
+    .map(
+      (r) => `
+    <tr>
+      <td>${esc(r.id.slice(0, 8))}…</td>
+      <td>${esc(state.accounts.find((a) => a.id === r.forwardAccountId)?.name ?? r.forwardAccountId.slice(0, 8))}</td>
+      <td>${esc(r.since ?? "—")} ~ ${esc(r.until ?? "—")}</td>
+      <td><code style="font-size:0.7rem">${esc((r.requiredTags || []).join(", ") || "—")}</code></td>
+      <td><code style="font-size:0.7rem">${esc(r.schedule || "—")}</code></td>
+      <td><span class="badge ${r.enabled ? "on" : "off"}">${r.enabled ? t("enabled") : t("disabled")}</span></td>
+      ${renderTableActions({
+        id: r.id,
+        enabled: r.enabled,
+        runClass: "btn-cleanup-run",
+        dryClass: "btn-cleanup-dry",
+        toggleClass: "btn-cleanup-toggle",
+        deleteClass: "btn-del-cleanup-rule",
+      })}
+    </tr>`,
+    )
+    .join("");
+
+  return shell(`
+    ${pageHeader(t("cleanupRulesTitle"), t("cleanupRulesSubtitle"))}
+    <div class="card">
+      <h2 class="card-title">${t("newCleanupRule")}</h2>
+      <div class="grid2">
+        <div>
+          <label>${t("forwardAccount")}</label>
+          <select id="cleanupRuleAccount">${accOpts || `<option value="">${t("selectAccountFirst")}</option>`}</select>
+        </div>
+        <div>
+          <label>${t("cleanupSinceDate")}</label>
+          <input id="cleanupRuleSince" type="date" value="${defaultCleanupSinceDate()}" />
+        </div>
+        <div>
+          <label>${t("cleanupUntilDate")}</label>
+          <input id="cleanupRuleUntil" type="date" value="${defaultCleanupUntilDate()}" />
+        </div>
+        <div>
+          <label>${t("requiredTags")}</label>
+          <input id="cleanupRuleTags" value="追觅, 俞浩" placeholder="追觅, 俞浩（命中任一即删）" />
+        </div>
+        <div>
+          <label>${t("cronOptional")}</label>
+          <input id="cleanupRuleSchedule" placeholder="0 10 * * *" />
+        </div>
+      </div>
+      <button id="btnCreateCleanupRule">${t("createCleanupRule")}</button>
+    </div>
+    ${renderExecutionLogCard()}
+    <div class="card table-card">
+      <h2 class="card-title" style="padding:1.25rem 1.5rem 0;margin:0">${t("cleanupRuleList")}</h2>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>${t("colId")}</th><th>${t("colAccount")}</th><th>${t("colDateRange")}</th><th>${t("requiredTags")}</th><th>${t("colSchedule")}</th><th>${t("colStatus")}</th><th class="table-actions-head">${t("colActions")}</th></tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="7" class="muted">${t("noCleanupRules")}</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+  `, "cleanup-rules");
+}
+
+function bindCleanupRules() {
+  bindShell();
+
+  document.getElementById("btnCreateCleanupRule")?.addEventListener("click", async () => {
+    const forwardAccountId = document.getElementById("cleanupRuleAccount").value;
+    const since = document.getElementById("cleanupRuleSince").value || defaultCleanupSinceDate();
+    const until = document.getElementById("cleanupRuleUntil").value || defaultCleanupUntilDate();
+    const tagsRaw = document.getElementById("cleanupRuleTags").value.trim();
+    const requiredTags = tagsRaw
+      ? tagsRaw.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+      : ["追觅", "俞浩"];
+    const schedule = document.getElementById("cleanupRuleSchedule").value.trim() || null;
+    if (!forwardAccountId) return toast(t("selectAccountFirst"), "error");
+    try {
+      await api("/api/v1/cleanup-rules", {
+        method: "POST",
+        body: JSON.stringify({
+          forwardAccountId,
+          since,
+          until,
+          requiredTags,
+          schedule,
+          enabled: true,
+        }),
+      });
+      toast(t("cleanupRuleCreated"), "success");
+      await loadCleanupRules();
+      render();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  });
+
+  document.querySelectorAll(".btn-cleanup-run").forEach((btn) => {
+    btn.addEventListener("click", () => runCleanupRule(btn.dataset.id, false));
+  });
+  document.querySelectorAll(".btn-cleanup-dry").forEach((btn) => {
+    btn.addEventListener("click", () => runCleanupRule(btn.dataset.id, true));
+  });
+
+  document.querySelectorAll(".btn-cleanup-toggle").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const enabled = btn.dataset.on !== "true";
+      try {
+        await api(`/api/v1/cleanup-rules/${btn.dataset.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        });
+        await loadCleanupRules();
+        render();
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    });
+  });
+
+  document.querySelectorAll(".btn-del-cleanup-rule").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm(t("confirmDeleteCleanupRule"))) return;
+      try {
+        await api(`/api/v1/cleanup-rules/${btn.dataset.id}`, { method: "DELETE" });
+        toast(t("deleted"), "success");
+        await loadCleanupRules();
+        render();
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    });
+  });
+}
+
+async function runCleanupRule(ruleId, dryRun) {
+  await runWithLock(dryRun ? t("dryRun") : t("run"), async () => {
+    try {
+      startRunLogPolling({ dryRun });
+      const data = await api(`/api/v1/cleanup-rules/${ruleId}/run`, {
+        method: "POST",
+        body: JSON.stringify({ dryRun }),
+      });
+      appendExecutionLogs(data.logs, { dryRun: data.dryRun ?? dryRun });
+      logLine(
+        t("logCleanupRuleRun", {
+          id: ruleId.slice(0, 8),
+          s: data.scanned ?? 0,
+          d: data.deleted ?? 0,
+        }),
+      );
+      if (dryRun || data.dryRun) {
+        toast(t("cleanupDryRunDone", { s: data.scanned ?? 0, d: data.deleted ?? 0 }), "success");
+      } else {
+        toast(t("cleanupDone", { n: data.deleted ?? 0 }), "success");
+      }
+      return data;
+    } catch (e) {
+      logLine(t("logCleanupRuleFail", { msg: e.message }));
+      appendExecutionLogs([`[error] ${e.message}`]);
+      toast(e.message, "error");
+      throw e;
+    }
+  });
+}
+
+function renderPaginationBar({ prevId, nextId, prevDisabled, nextDisabled, page, pages }) {
+  return `
+      <div class="table-footer pagination-bar">
+        <button class="secondary" id="${prevId}" ${prevDisabled ? "disabled" : ""}>${t("prevPage")}</button>
+        <span class="pagination-info">${t("paginationPage", { page, pages })}</span>
+        <button class="secondary" id="${nextId}" ${nextDisabled ? "disabled" : ""}>${t("nextPage")}</button>
+      </div>`;
+}
+
+function renderCleanupRecords() {
+  const f = state.cleanupRecordFilters;
+  const accOpts = [
+    `<option value="">${t("allAccounts")}</option>`,
+    ...state.accounts.map(
+      (a) => `<option value="${esc(a.id)}" ${f.accountId === a.id ? "selected" : ""}>${esc(a.name)}</option>`,
+    ),
+  ].join("");
+
+  const rows = state.cleanupRecords
+    .map(
+      (r) => `
+    <tr>
+      <td>${esc(formatRecordTime(r.deletedAt))}</td>
+      <td>${esc(state.accounts.find((a) => a.id === r.forwardAccountId)?.name ?? r.forwardAccountId.slice(0, 8))}</td>
+      <td><code>${esc(r.mid)}</code></td>
+      <td>${esc(r.judgeReason)}</td>
+      <td><span class="badge ${r.dryRun ? "off" : "on"}">${r.dryRun ? t("dryRunBadge") : t("deleted")}</span></td>
+      <td><a href="${esc(r.detailUrl)}" target="_blank" rel="noopener">${t("open")}</a></td>
+    </tr>`,
+    )
+    .join("");
+
+  const total = state.cleanupRecordTotal;
+  const pages = Math.max(1, Math.ceil(total / f.limit));
+  const page = Math.floor(f.offset / f.limit) + 1;
+
+  return shell(`
+    ${pageHeader(t("cleanupRecordsTitle"), t("cleanupRecordsSubtitle", { total, page, pages }))}
+    <div class="stat-row">
+      <div class="stat">
+        <span class="muted">${t("statCleanupDeleted")}</span>
+        <strong>${state.cleanupDeletedTotal}</strong>
+      </div>
+      ${
+        state.cleanupRecordTotal > state.cleanupDeletedTotal
+          ? `<div class="stat"><span class="muted">${t("statCleanupDryRun")}</span><strong>${state.cleanupRecordTotal - state.cleanupDeletedTotal}</strong></div>`
+          : ""
+      }
+    </div>
+    <div class="card">
+      <h2 class="card-title">${t("filter")}</h2>
+      <div class="grid2">
+        <div>
+          <label>${t("forwardAccount")}</label>
+          <select id="cleanupFilterAccount">${accOpts}</select>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:1rem">
+        <button id="btnCleanupSearch">${t("search")}</button>
+        <button class="secondary" id="btnCleanupReset">${t("reset")}</button>
+      </div>
+    </div>
+    <div class="card table-card">
+      <h2 class="card-title" style="padding:1.25rem 1.5rem 0;margin:0">${t("cleanupRecordList", { n: state.cleanupDeletedTotal })}</h2>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>${t("colTime")}</th><th>${t("colAccount")}</th><th>${t("colMid")}</th><th>${t("colJudgeReason")}</th><th>${t("colStatus")}</th><th>${t("colActions")}</th></tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="6" class="muted">${t("noCleanupRecords")}</td></tr>`}</tbody>
+      </table>
+      </div>
+      ${renderPaginationBar({
+        prevId: "cleanupPrev",
+        nextId: "cleanupNext",
+        prevDisabled: f.offset <= 0,
+        nextDisabled: f.offset + f.limit >= total,
+        page,
+        pages,
+      })}
+    </div>
+  `, "cleanup-records");
+}
+
+function bindCleanupRecords() {
+  bindShell();
+  document.getElementById("btnCleanupSearch")?.addEventListener("click", async () => {
+    state.cleanupRecordFilters.accountId = document.getElementById("cleanupFilterAccount").value;
+    state.cleanupRecordFilters.offset = 0;
+    await loadCleanupRecords();
+    render();
+  });
+  document.getElementById("btnCleanupReset")?.addEventListener("click", async () => {
+    state.cleanupRecordFilters = { accountId: "", limit: 20, offset: 0 };
+    await loadCleanupRecords();
+    render();
+  });
+  document.getElementById("cleanupPrev")?.addEventListener("click", async () => {
+    state.cleanupRecordFilters.offset = Math.max(0, state.cleanupRecordFilters.offset - state.cleanupRecordFilters.limit);
+    await loadCleanupRecords();
+    render();
+  });
+  document.getElementById("cleanupNext")?.addEventListener("click", async () => {
+    state.cleanupRecordFilters.offset += state.cleanupRecordFilters.limit;
+    await loadCleanupRecords();
+    render();
   });
 }
 
@@ -1054,10 +1390,14 @@ function renderRecords() {
         <tbody>${rows}</tbody>
       </table>
       </div>
-      <div class="table-footer actions">
-        <button class="secondary" id="btnRecPrev" ${hasPrev ? "" : "disabled"}>${t("prevPage")}</button>
-        <button class="secondary" id="btnRecNext" ${hasNext ? "" : "disabled"}>${t("nextPage")}</button>
-      </div>
+      ${renderPaginationBar({
+        prevId: "btnRecPrev",
+        nextId: "btnRecNext",
+        prevDisabled: !hasPrev,
+        nextDisabled: !hasNext,
+        page,
+        pages: totalPages,
+      })}
     </div>
   `, "records");
 }
@@ -1263,6 +1603,29 @@ async function loadRules() {
   state.rules = data.rules ?? [];
 }
 
+async function loadCleanupRules() {
+  const data = await api(`/api/v1/cleanup-rules${userScopeParams()}`);
+  state.cleanupRules = data.rules ?? [];
+}
+
+async function loadJudgeTemplates() {
+  const data = await api("/api/v1/judge-templates");
+  state.judgeTemplates = data.templates ?? [];
+}
+
+async function loadCleanupRecords() {
+  const f = state.cleanupRecordFilters;
+  const params = new URLSearchParams();
+  if (f.accountId) params.set("forwardAccountId", f.accountId);
+  params.set("limit", String(f.limit));
+  params.set("offset", String(f.offset));
+  if (isAdminUser() && state.scopeUserId) params.set("userId", state.scopeUserId);
+  const data = await api(`/api/v1/cleanup-records?${params}`);
+  state.cleanupRecords = data.records ?? [];
+  state.cleanupRecordTotal = data.total ?? 0;
+  state.cleanupDeletedTotal = data.deletedTotal ?? 0;
+}
+
 async function loadRecords() {
   const f = state.recordFilters;
   const params = new URLSearchParams();
@@ -1295,6 +1658,7 @@ async function refreshAll() {
     await loadTenantUsers();
     await loadAccounts();
     await loadRules();
+    await loadCleanupRules();
     await loadRecordTotal();
   }
 }
@@ -1346,10 +1710,19 @@ async function render() {
       app.innerHTML = renderRules();
       bindRules();
       break;
+    case "/cleanup-rules":
+      app.innerHTML = renderCleanupRules();
+      bindCleanupRules();
+      break;
     case "/records":
       await loadRecords();
       app.innerHTML = renderRecords();
       bindRecords();
+      break;
+    case "/cleanup-records":
+      await loadCleanupRecords();
+      app.innerHTML = renderCleanupRecords();
+      bindCleanupRecords();
       break;
     case "/settings":
       app.innerHTML = renderSettings();

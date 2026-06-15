@@ -48,13 +48,33 @@ import {
 } from "../db/user-store.js";
 import {
   formatRulePromptProfile,
+  formatCleanupJudgeProfile,
+  isJudgeTemplateId,
   isPromptTemplateId,
+  judgeTemplateMetaForApi,
+  parseCleanupJudgeProfile,
   parseRulePromptProfile,
   templateMetaForApi,
 } from "../prompt-templates.js";
 import type { ForwardRecordRow } from "../db/types.js";
 import { reloadCronScheduler } from "../services/cron-scheduler.js";
 import { runTenantAllRules, runTenantRule } from "../services/tenant-forward-service.js";
+import {
+  runTenantAllCleanupRules,
+  runTenantCleanupRule,
+} from "../services/tenant-cleanup-service.js";
+import {
+  createCleanupRule,
+  deleteCleanupRule,
+  listAllCleanupRecords,
+  listAllCleanupRules,
+  listCleanupRecords,
+  listCleanupRules,
+  mapCleanupRecord,
+  mapCleanupRule,
+  resolveCleanupRule,
+  updateCleanupRule,
+} from "../db/cleanup-store.js";
 import {
   getLoginSessionPublic,
   startWeiboLoginSession,
@@ -168,6 +188,38 @@ function buildPromptProfileFromBody(body: {
     });
   }
   return body.promptProfile;
+}
+
+const judgeTemplateIdZod = z.enum(["dreame-video-negative"]);
+
+function buildCleanupJudgeProfileFromBody(body: {
+  judgeProfile?: string | null;
+  judgeTemplateId?: string | null;
+  judgePrompt?: string | null;
+  judgeInherit?: boolean;
+}): string | null | undefined {
+  if (body.judgeInherit) return null;
+  if (body.judgeTemplateId !== undefined || body.judgePrompt !== undefined) {
+    const tid =
+      body.judgeTemplateId && isJudgeTemplateId(body.judgeTemplateId)
+        ? body.judgeTemplateId
+        : undefined;
+    return formatCleanupJudgeProfile({
+      templateId: tid,
+      customPrompt: body.judgePrompt,
+    });
+  }
+  return body.judgeProfile;
+}
+
+function mapCleanupRuleApi(r: import("../db/types.js").CleanupRuleRow) {
+  const mapped = mapCleanupRule(r);
+  const parsed = parseCleanupJudgeProfile(r.judge_profile);
+  return {
+    ...mapped,
+    judgeTemplateId: parsed.templateId ?? null,
+    judgeInherit: !r.judge_profile && !r.judge_prompt,
+  };
 }
 
 function mapRule(r: import("../db/types.js").ForwardRuleRow) {
@@ -301,6 +353,10 @@ export function createApp() {
 
   app.get("/api/v1/prompt-templates", requireAuth, (_req: AuthedRequest, res) => {
     res.json({ templates: templateMetaForApi() });
+  });
+
+  app.get("/api/v1/judge-templates", requireAuth, (_req: AuthedRequest, res) => {
+    res.json({ templates: judgeTemplateMetaForApi() });
   });
 
   app.get("/api/v1/me/prompt-settings", requireAuth, (req: AuthedRequest, res) => {
@@ -767,6 +823,221 @@ export function createApp() {
       });
 
       res.json(result);
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  // --- cleanup rules ---
+  app.get("/api/v1/cleanup-rules", requireAuth, (req: AuthedRequest, res) => {
+    try {
+      const db = getDatabase();
+      const scopeUserId = resolveListUserId(req.user!, queryUserId(req));
+      const rules = scopeUserId ? listCleanupRules(db, scopeUserId) : listAllCleanupRules(db);
+      res.json({ rules: rules.map(mapCleanupRuleApi) });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  app.post("/api/v1/cleanup-rules", requireAuth, (req: AuthedRequest, res) => {
+    try {
+      const body = z
+        .object({
+          forwardAccountId: z.string(),
+          enabled: z.boolean().optional(),
+          postTypes: z
+            .array(z.enum(["video", "image", "text", "unknown"]))
+            .optional(),
+          requiredTags: z.array(z.string()).optional(),
+          judgeProfile: z.string().optional(),
+          judgeTemplateId: judgeTemplateIdZod.nullable().optional(),
+          judgePrompt: z.string().nullable().optional(),
+          judgeInherit: z.boolean().optional(),
+          schedule: z.string().optional().nullable(),
+          since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          userId: z.string().optional(),
+        })
+        .parse(req.body);
+
+      const db = getDatabase();
+      const ownerId = resolveCreateUserId(req.user!, body.userId);
+      const rule = createCleanupRule(db, ownerId, {
+        forwardAccountId: body.forwardAccountId,
+        enabled: body.enabled,
+        postTypes: body.postTypes ?? [],
+        requiredTags: body.requiredTags ?? ["追觅", "俞浩"],
+        judgeProfile: buildCleanupJudgeProfileFromBody(body) ?? null,
+        judgePrompt: body.judgePrompt ?? null,
+        schedule: body.schedule,
+        since: body.since ?? null,
+        until: body.until ?? null,
+      });
+      reloadCronScheduler(db);
+      res.status(201).json(mapCleanupRuleApi(rule));
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  app.patch("/api/v1/cleanup-rules/:ruleId", requireAuth, (req: AuthedRequest, res) => {
+    try {
+      const body = z
+        .object({
+          enabled: z.boolean().optional(),
+          schedule: z.string().nullable().optional(),
+          postTypes: z.array(z.enum(["video", "image", "text", "unknown"])).optional(),
+          requiredTags: z.array(z.string()).optional(),
+          judgeProfile: z.string().nullable().optional(),
+          judgeTemplateId: judgeTemplateIdZod.nullable().optional(),
+          judgePrompt: z.string().nullable().optional(),
+          judgeInherit: z.boolean().optional(),
+          since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+          until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+        })
+        .parse(req.body);
+      const db = getDatabase();
+      const rule = resolveCleanupRule(db, req.user!, routeParam(req.params.ruleId));
+      if (!rule) {
+        res.status(404).json({ error: "清理规则不存在" });
+        return;
+      }
+      const judgeProfile = buildCleanupJudgeProfileFromBody(body);
+      const patch = {
+        enabled: body.enabled,
+        schedule: body.schedule,
+        postTypes: body.postTypes,
+        requiredTags: body.requiredTags,
+        since: body.since,
+        until: body.until,
+        ...(judgeProfile !== undefined ? { judgeProfile } : {}),
+        ...(body.judgePrompt !== undefined ? { judgePrompt: body.judgePrompt } : {}),
+      };
+      const ok = updateCleanupRule(db, rule.user_id, rule.id, patch);
+      if (!ok) {
+        res.status(404).json({ error: "清理规则不存在" });
+        return;
+      }
+      reloadCronScheduler(db);
+      res.json({ ok: true });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  app.delete("/api/v1/cleanup-rules/:ruleId", requireAuth, (req: AuthedRequest, res) => {
+    try {
+      const db = getDatabase();
+      const rule = resolveCleanupRule(db, req.user!, routeParam(req.params.ruleId));
+      if (!rule) {
+        res.status(404).json({ error: "清理规则不存在" });
+        return;
+      }
+      const ok = deleteCleanupRule(db, rule.user_id, rule.id);
+      if (!ok) {
+        res.status(404).json({ error: "清理规则不存在" });
+        return;
+      }
+      reloadCronScheduler(db);
+      res.status(204).end();
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  app.post("/api/v1/cleanup-rules/:ruleId/run", requireAuth, async (req: AuthedRequest, res) => {
+    try {
+      const body = z.object({ dryRun: z.boolean().optional() }).parse(req.body ?? {});
+      const env = loadEnvSettings({ dryRun: body.dryRun });
+      const db = getDatabase();
+      const actorId = req.user!.id;
+
+      const result = await withRunLock(actorId, async () => {
+        startActorRun(actorId, !!env.dryRun);
+        const logger = new RunLogger((line) => appendActorRunLog(actorId, line));
+        try {
+          return await runTenantCleanupRule(db, req.user!, routeParam(req.params.ruleId), {
+            headless: env.headless,
+            dryRun: env.dryRun,
+            logger,
+          });
+        } catch (err) {
+          logger.log(`[error] ${err instanceof Error ? err.message : String(err)}`);
+          throw err;
+        } finally {
+          finishActorRun(actorId);
+        }
+      });
+
+      res.json(result);
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  app.post("/api/v1/cleanup-rules/run-all", requireAuth, async (req: AuthedRequest, res) => {
+    try {
+      const body = z
+        .object({ dryRun: z.boolean().optional(), userId: z.string().optional() })
+        .parse(req.body ?? {});
+      const env = loadEnvSettings({ dryRun: body.dryRun });
+      const db = getDatabase();
+      const scopeUserId = resolveListUserId(req.user!, body.userId);
+      const actorId = req.user!.id;
+
+      const result = await withRunLock(actorId, async () => {
+        startActorRun(actorId, !!env.dryRun);
+        const logger = new RunLogger((line) => appendActorRunLog(actorId, line));
+        try {
+          return await runTenantAllCleanupRules(db, req.user!, { ...env, logger }, scopeUserId);
+        } catch (err) {
+          logger.log(`[error] ${err instanceof Error ? err.message : String(err)}`);
+          throw err;
+        } finally {
+          finishActorRun(actorId);
+        }
+      });
+
+      res.json(result);
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  app.get("/api/v1/cleanup-records", requireAuth, (req: AuthedRequest, res) => {
+    try {
+      const db = getDatabase();
+      const query = z
+        .object({
+          userId: z.string().optional(),
+          forwardAccountId: z.string().optional(),
+          limit: z.coerce.number().int().positive().max(100).default(20),
+          offset: z.coerce.number().int().min(0).default(0),
+        })
+        .parse(req.query);
+
+      const scopeUserId = resolveListUserId(req.user!, query.userId);
+      const { records, total, deletedTotal } = scopeUserId
+        ? listCleanupRecords(db, scopeUserId, {
+            forwardAccountId: query.forwardAccountId,
+            limit: query.limit,
+            offset: query.offset,
+          })
+        : listAllCleanupRecords(db, {
+            userId: query.userId,
+            forwardAccountId: query.forwardAccountId,
+            limit: query.limit,
+            offset: query.offset,
+          });
+
+      res.json({
+        records: records.map(mapCleanupRecord),
+        total,
+        deletedTotal,
+        limit: query.limit,
+        offset: query.offset,
+      });
     } catch (err) {
       handleError(res, err);
     }

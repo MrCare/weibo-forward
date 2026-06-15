@@ -5,4 +5,8 @@ export { DefaultJobRunner } from "./job-runner.js";
 export { FileForwardRepository } from "./file-forward-repository.js";
 export { PlaywrightWeiboClient } from "./playwright-weibo-client.js";
 export { QwenCliCommentGenerator } from "./qwen-comment-generator.js";
+export { DefaultCleanupJobRunner } from "./cleanup-job-runner.js";
+export { FileCleanupRepository } from "./file-cleanup-repository.js";
+export { createContentJudge, describeContentJudge } from "./content-judge-factory.js";
+export { filterCleanupCandidates, splitCleanupPosts, textContainsAnyTag, textContainsTag } from "./filter-cleanup-candidates.js";
 export type * from "./interfaces.js";

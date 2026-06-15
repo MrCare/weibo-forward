@@ -205,3 +205,94 @@ export function templateMetaForApi() {
 
 /** @deprecated 兼容旧引用 */
 export const FORWARD_SYSTEM_PROMPT = PROMPT_TEMPLATES.libai.systemPrompt;
+
+// --- 内容清理判定模板 ---
+
+export type JudgeTemplateId = "dreame-video-negative";
+
+export const JUDGE_TEMPLATE_IDS: JudgeTemplateId[] = ["dreame-video-negative"];
+
+export interface JudgeTemplateMeta {
+  id: JudgeTemplateId;
+  nameKey: string;
+  descriptionKey: string;
+  systemPrompt: string;
+}
+
+export const JUDGE_TEMPLATES: Record<JudgeTemplateId, JudgeTemplateMeta> = {
+  "dreame-video-negative": {
+    id: "dreame-video-negative",
+    nameKey: "judgeDreameVideoNegative",
+    descriptionKey: "judgeDreameVideoNegativeDesc",
+    systemPrompt: `你是微博品牌内容审核助手，负责判断某条微博是否应当删除。
+
+删除标准（满足即 shouldDelete=true）：
+- 内容不属于产品、技术、创新类
+- 且内容非高端、非正向（如娱乐八卦、吐槽、负面舆情、低质蹭热点、损害品牌形象等）
+
+应当保留（shouldDelete=false）的内容：
+- 产品展示、功能介绍、使用体验等产品类内容
+- 技术分享、研发、工程、专利等技术类内容
+- 创新、突破、行业领先等创新类内容
+- 高端品牌形象、企业家正面形象、行业领导力
+- 整体调性正向、专业、有品牌价值
+
+说明：若微博带有 #追觅 或 #俞浩 话题，已由规则直接删除，不会交给你判定。你只需判断无上述 tag 的微博。
+
+请根据正文语义综合判断，输出 JSON：{"shouldDelete": boolean, "reason": "简要中文理由"}`,
+  },
+};
+
+export const JUDGE_TEMPLATE_LIST = Object.values(JUDGE_TEMPLATES);
+
+export function isJudgeTemplateId(id: string): id is JudgeTemplateId {
+  return id in JUDGE_TEMPLATES;
+}
+
+export function parseCleanupJudgeProfile(profile: string | null | undefined): {
+  templateId?: JudgeTemplateId;
+  customPrompt?: string;
+} {
+  if (!profile?.trim()) return {};
+  const raw = profile.trim();
+  if (raw.startsWith("custom:")) {
+    return { customPrompt: raw.slice("custom:".length).trim() };
+  }
+  if (raw.startsWith("template:")) {
+    const id = raw.slice("template:".length).trim();
+    return isJudgeTemplateId(id) ? { templateId: id } : {};
+  }
+  if (isJudgeTemplateId(raw)) return { templateId: raw };
+  return { customPrompt: raw };
+}
+
+export function resolveCleanupJudgePrompt(
+  judgeProfile?: string | null,
+  judgePrompt?: string | null,
+): string {
+  if (judgePrompt?.trim()) return judgePrompt.trim();
+  const parsed = parseCleanupJudgeProfile(judgeProfile);
+  if (parsed.customPrompt) return parsed.customPrompt;
+  if (parsed.templateId) return JUDGE_TEMPLATES[parsed.templateId].systemPrompt;
+  return JUDGE_TEMPLATES["dreame-video-negative"].systemPrompt;
+}
+
+export function formatCleanupJudgeProfile(input: {
+  templateId?: JudgeTemplateId | null;
+  customPrompt?: string | null;
+}): string | null {
+  const custom = input.customPrompt?.trim();
+  if (custom) return `custom:${custom}`;
+  if (input.templateId && isJudgeTemplateId(input.templateId)) {
+    return `template:${input.templateId}`;
+  }
+  return null;
+}
+
+export function judgeTemplateMetaForApi() {
+  return JUDGE_TEMPLATE_LIST.map((t) => ({
+    id: t.id,
+    nameKey: t.nameKey,
+    descriptionKey: t.descriptionKey,
+  }));
+}

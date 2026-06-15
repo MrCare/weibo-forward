@@ -44,4 +44,27 @@ export const SELECTORS = {
     'article [class*="text"]',
     '[node-type="feed_list_content"]',
   ],
+  /** 详情页「更多」菜单按钮 */
+  postMoreMenu: [
+    '[action-type="fl_menu"]',
+    'a[action-type="fl_menu"]',
+    '[class*="_more_"]',
+    'button[aria-label*="更多"]',
+  ],
+  /** 删除确认弹层 */
+  deleteConfirmRoots: [
+    '[role="dialog"]',
+    '[class*="woo-modal-main"]',
+    '[class*="woo-dialog-main"]',
+    '[class*="woo-pop-wrap"]',
+  ],
+  /** 视频卡片特征 */
+  videoIndicators: [
+    "video",
+    '[class*="video"]',
+    '[class*="Video"]',
+    '[class*="play"]',
+    '[class*="Play"]',
+    'svg[class*="play"]',
+  ],
 } as const;

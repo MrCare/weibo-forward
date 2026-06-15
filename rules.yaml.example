@@ -1,24 +1,10 @@
-# 复制为 rules.yaml 后按需修改
-# cp rules.yaml.example rules.yaml
-
-accounts:
-  # 你的转发微博号（用于登录、发转发）
-  - id: my-main
-    # 可选：自定义登录态路径，默认 data/accounts/my-main/storageState.json
-    # storageState: data/accounts/my-main/storageState.json
-
-rules:
-  # 从源账号抓博并用自己的号转发
-  - id: rule-brand
-    forwardAccountId: my-main
-    sourceUid: "1234567890"   # 源账号 UID（请改为实际值）
-    limit: 1
+# 内容清理规则：按时间范围扫描本人时间线，命中 tag 即删除
+cleanupRules:
+  - id: video-dreame-yuhao
+    accountId: my-main
     enabled: true
-    # promptProfile: default  # 预留，当前均使用默认 qwen 提示词
-    # schedule: "0 9 * * *"   # 预留，可用系统 cron 调用 forward --rule
-
-  - id: rule-another
-    forwardAccountId: my-main
-    sourceUid: "1234567890"
-    limit: 3
-    enabled: false
+    since: "2025-05-01"   # 默认当年 5 月 1 日，不写则自动使用
+    until: "2025-06-15"   # 默认今天，不写则自动使用
+    # postTypes: [video]  # 可选，留空或不写表示不限媒体类型
+    requiredTags: ["追觅", "俞浩"]  # 命中任一 tag 即删除
+    # schedule: "0 10 * * *"     # 预留 cron

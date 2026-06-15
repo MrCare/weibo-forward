@@ -6,6 +6,7 @@
   "scripts": {
     "auth:login": "tsx src/cli.ts auth login",
     "forward": "tsx src/cli.ts forward",
+    "cleanup": "tsx src/cli.ts cleanup",
     "start:api": "tsx src/api-main.ts",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",

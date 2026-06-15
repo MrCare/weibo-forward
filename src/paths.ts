@@ -43,3 +43,11 @@ export function forwardedJsonPath(forwardAccountId: string): string {
 export function myRepostLinksCsvPath(forwardAccountId: string): string {
   return path.join(accountDataDir(forwardAccountId), "my-repost-links.csv");
 }
+
+export function cleanupRecordsCsvPath(forwardAccountId: string): string {
+  return path.join(accountDataDir(forwardAccountId), "cleanup-records.csv");
+}
+
+export function cleanupJudgmentsJsonlPath(forwardAccountId: string, ruleId: string): string {
+  return path.join(accountDataDir(forwardAccountId), `cleanup-judgments-${ruleId}.jsonl`);
+}

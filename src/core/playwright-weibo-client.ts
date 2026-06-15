@@ -1,13 +1,14 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { deleteWeiboPost } from "../deleter.js";
 import { repostWeibo } from "../publisher.js";
-import { scrapeSourceTimeline } from "../scraper.js";
+import { scrapeMyTimeline, scrapeMyTimelineByDateRange, scrapeSourceTimeline } from "../scraper.js";
 import { SELECTORS } from "../selectors.js";
 import { storageStatePath } from "../paths.js";
 import { probeLoggedIn } from "../weibo-login-probe.js";
 import type { WeiboPost } from "../types.js";
-import type { ScrapeTimelineOptions, WeiboClient } from "./interfaces.js";
+import type { ScrapeByDateOptions, ScrapeTimelineOptions, WeiboClient } from "./interfaces.js";
 
 const VIEWPORT = { width: 1280, height: 900 };
 const NAV_TIMEOUT_MS = 60_000;
@@ -67,6 +68,26 @@ export class PlaywrightWeiboClient implements WeiboClient {
 
   repost(context: BrowserContext, post: WeiboPost, comment: string): Promise<string> {
     return repostWeibo(context, post, comment);
+  }
+
+  scrapeMyTimeline(
+    page: Page,
+    myUid: string,
+    options?: ScrapeTimelineOptions,
+  ): Promise<WeiboPost[]> {
+    return scrapeMyTimeline(page, myUid, options);
+  }
+
+  scrapeMyTimelineByDateRange(
+    page: Page,
+    myUid: string,
+    options: ScrapeByDateOptions,
+  ): Promise<WeiboPost[]> {
+    return scrapeMyTimelineByDateRange(page, myUid, options);
+  }
+
+  deletePost(context: BrowserContext, post: WeiboPost): Promise<void> {
+    return deleteWeiboPost(context, post);
   }
 }
 

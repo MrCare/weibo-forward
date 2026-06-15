@@ -453,6 +453,26 @@ tbody tr:last-child td {
   border-bottom: none;
 }
 
+.table-actions-head,
+.table-actions-cell {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.table-actions button {
+  padding: 0.36rem 0.65rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
 .badge {
   display: inline-block;
   padding: 0.2rem 0.65rem;
@@ -564,6 +584,33 @@ td a {
   padding: 1rem 1.25rem;
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pagination-bar .pagination-info {
+  min-width: 7.5rem;
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pagination-bar button {
+  min-width: 5.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+
+.pagination-bar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* --- login --- */

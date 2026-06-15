@@ -1,7 +1,21 @@
+export type WeiboMediaType = "video" | "image" | "text" | "unknown";
+
 export interface WeiboPost {
   mid: string;
   text: string;
   detailUrl: string;
+  mediaType?: WeiboMediaType;
+  /** 发布时间 ISO 字符串（抓取或 mid 推算） */
+  postedAt?: string;
+}
+
+export interface CleanupRecord {
+  mid: string;
+  forwardAccountId: string;
+  detailUrl: string;
+  judgeReason: string;
+  deletedAt: string;
+  dryRun?: boolean;
 }
 
 export interface ForwardRecord {

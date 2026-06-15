@@ -1,9 +1,15 @@
 import type { BrowserContext } from "playwright";
-import type { ForwardRecord, WeiboPost } from "../types.js";
+import type { CleanupRecord, ForwardRecord, WeiboPost, WeiboMediaType } from "../types.js";
 
 export interface ScrapeTimelineOptions {
   neededCount?: number;
   forwardedMids?: Set<string>;
+  maxScrolls?: number;
+}
+
+export interface ScrapeByDateOptions {
+  sinceMs: number;
+  untilMs: number;
   maxScrolls?: number;
 }
 
@@ -23,6 +29,17 @@ export interface WeiboClient {
     post: WeiboPost,
     comment: string,
   ): Promise<string>;
+  scrapeMyTimeline(
+    page: import("playwright").Page,
+    myUid: string,
+    options?: ScrapeTimelineOptions,
+  ): Promise<WeiboPost[]>;
+  scrapeMyTimelineByDateRange(
+    page: import("playwright").Page,
+    myUid: string,
+    options: ScrapeByDateOptions,
+  ): Promise<WeiboPost[]>;
+  deletePost(context: BrowserContext, post: WeiboPost): Promise<void>;
 }
 
 export interface CommentGenerator {
@@ -77,4 +94,78 @@ export interface JobRunner {
   run(input: ForwardJobInput, options?: RunForwardOptions): Promise<ForwardJobResult>;
 }
 
-export type { ForwardRecord, WeiboPost };
+export interface ContentJudgment {
+  shouldDelete: boolean;
+  reason: string;
+}
+
+export interface ContentJudge {
+  judge(post: WeiboPost, systemPrompt: string): Promise<ContentJudgment>;
+  judgeBatch(
+    posts: WeiboPost[],
+    systemPrompt: string,
+  ): Promise<Map<string, ContentJudgment>>;
+}
+
+export interface MarkCleanupInput {
+  forwardAccountId: string;
+  mid: string;
+  detailUrl: string;
+  judgeReason: string;
+  dryRun: boolean;
+}
+
+export interface CleanupJudgmentRecord {
+  shouldDelete: boolean;
+  reason: string;
+  ruleFingerprint: string;
+}
+
+export interface SaveCleanupJudgmentInput {
+  ruleId: string;
+  mid: string;
+  ruleFingerprint: string;
+  shouldDelete: boolean;
+  reason: string;
+}
+
+export interface CleanupRepository {
+  getProcessedMids(forwardAccountId: string): Promise<Set<string>>;
+  markProcessed(input: MarkCleanupInput): Promise<void>;
+  getJudgment(
+    ruleId: string,
+    mid: string,
+    ruleFingerprint: string,
+  ): Promise<CleanupJudgmentRecord | null>;
+  saveJudgment(input: SaveCleanupJudgmentInput): Promise<void>;
+}
+
+export interface CleanupJobInput {
+  forwardAccountId: string;
+  since: string;
+  until: string;
+  postTypes: WeiboMediaType[];
+  requiredTags: string[];
+  dryRun: boolean;
+  headless: boolean;
+}
+
+export interface CleanupJobResult {
+  scanned: number;
+  candidates: number;
+  deleted: number;
+  skipped: number;
+  logs?: string[];
+  dryRun?: boolean;
+}
+
+export interface RunCleanupOptions {
+  context?: BrowserContext;
+  logger?: import("./run-logger.js").RunLogger;
+}
+
+export interface CleanupJobRunner {
+  run(input: CleanupJobInput, options?: RunCleanupOptions): Promise<CleanupJobResult>;
+}
+
+export type { ForwardRecord, WeiboPost, CleanupRecord, WeiboMediaType };

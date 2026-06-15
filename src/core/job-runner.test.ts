@@ -33,6 +33,13 @@ function createMocks() {
     async repost() {
       return "https://weibo.com/me/xyz";
     },
+    async scrapeMyTimeline() {
+      return [];
+    },
+    async scrapeMyTimelineByDateRange() {
+      return [];
+    },
+    async deletePost() {},
   };
 
   const commentGenerator: CommentGenerator = {

@@ -73,3 +73,47 @@ CREATE INDEX IF NOT EXISTS idx_forward_records_user ON forward_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_repost_links_user_date ON repost_links(user_id, forward_account_id, link_date);
 CREATE INDEX IF NOT EXISTS idx_login_sessions_user ON login_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_login_sessions_token ON login_sessions(login_token);
+
+CREATE TABLE IF NOT EXISTS cleanup_rules (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  forward_account_id TEXT NOT NULL REFERENCES forward_accounts(id) ON DELETE CASCADE,
+  limit_count INTEGER NOT NULL DEFAULT 30 CHECK (limit_count > 0),
+  enabled INTEGER NOT NULL DEFAULT 1,
+  post_types TEXT NOT NULL DEFAULT '["video"]',
+  required_tags TEXT NOT NULL DEFAULT '[]',
+  judge_profile TEXT,
+  judge_prompt TEXT,
+  schedule TEXT,
+  since_date TEXT,
+  until_date TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS cleanup_judgments (
+  rule_id TEXT NOT NULL REFERENCES cleanup_rules(id) ON DELETE CASCADE,
+  mid TEXT NOT NULL,
+  rule_fingerprint TEXT NOT NULL,
+  should_delete INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  judged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (rule_id, mid)
+);
+
+CREATE TABLE IF NOT EXISTS cleanup_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  forward_account_id TEXT NOT NULL REFERENCES forward_accounts(id) ON DELETE CASCADE,
+  mid TEXT NOT NULL,
+  detail_url TEXT NOT NULL,
+  judge_reason TEXT NOT NULL,
+  deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  dry_run INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (forward_account_id, mid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cleanup_rules_user ON cleanup_rules(user_id);
+CREATE INDEX IF NOT EXISTS idx_cleanup_rules_account ON cleanup_rules(forward_account_id);
+CREATE INDEX IF NOT EXISTS idx_cleanup_records_user ON cleanup_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_cleanup_records_account ON cleanup_records(forward_account_id);
+CREATE INDEX IF NOT EXISTS idx_cleanup_judgments_rule ON cleanup_judgments(rule_id);
